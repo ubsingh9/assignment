@@ -1,0 +1,142 @@
+---
+title: 'Practical Machine Learning: Writeup'
+author: "Uday Bhan Singh"
+date: "Saturday, February 21, 2015"
+output: html_document
+---
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+*Data *
+
+The training data for this project are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+The data for this project come from this source: <http://groupware.les.inf.puc-rio.br/har>. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+#Prepairing Data Set#
+Before starting the analysis, we need to  load few packages. Most importantly, the caret package is used here, which provides a streamlined interface into a variety of machine learning methods, making the entire analysis process much easier.
+
+```{r, echo=TRUE, cache=TRUE}
+#R version R 3.1.2
+library(knitr)
+library(caret)
+
+# reading data set 
+trainData <- read.csv("pml-training.csv", header = T, stringsAsFactors = F, na.strings=c("", "NA"))
+testData <- read.csv("pml-testing.csv", header = T, stringsAsFactors = F, na.strings = c("", "NA"))
+
+# The training data has classe so we need to convert it to a factor for the model building.
+
+trainData$classe <- as.factor(trainData$classe)
+
+# data understanding
+str(trainData)
+dim(trainData)
+
+str(testData)
+dim(testData)
+```
+
+##Cleaning data variables and replacing missing values##
+After investigating all the variables of the sets, it's possible to see that there are a lot of values NA or useless or empty variables for the prediction. It's request to compute the prediction only on the accelerometers values of belt, forearm, arm and dumbell. So, the non-accelerometer measures are discard with the useless variables.
+
+Because lot of the variable contain missing values more than 97%, so they will not much influence in building model. So remove those variable and keep other variable in another data set.
+
+```{r, echo=TRUE}
+
+rm.TrData <- trainData[, -c(12:36, 50:59, 69:83, 87:101, 103:112, 125:139, 141:150)]
+
+rm.TsData <- testData[, -c(12:36, 50:59, 69:83, 87:101, 103:112, 125:139, 141:150)]
+dim(rm.TrData)
+dim(rm.TsData)
+
+# Remove the columns that aren't the predictor variables ie. "X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window".
+
+clean.TrData <- rm.TrData[, -c(1:7)]
+clean.TsData <- rm.TsData[, -c(1:7)]
+dim(clean.TrData)
+dim(clean.TsData)
+
+```
+#Create cross validation set#
+
+The training set is divided in two parts, one for training and the other for cross validation
+```{r, echo=TRUE,cache=TRUE}
+
+set.seed(12031987)
+
+inTrain = createDataPartition(clean.TrData$classe, p = 3/4, list=FALSE)
+training = clean.TrData[inTrain,]
+crossValidation = clean.TrData[-inTrain,]
+
+```
+This filtering process has reduced the total number of features to 52. All of these remaining features have complete data, eliminating the need for imputation.
+
+Now that we have the training and testing sets prepared, it’s time to build the prediction models on the training data. Here, I’ll build 3 models via the following classifier algorithms: Random Forest, SVM (radial kernel), and KNN. Parameters will be tuned via 5-fold cross validation.
+
+```{r, echo=TRUE, cache=TRUE}
+# convert classe into factor
+
+clean.TrData$classe <- as.factor(clean.TrData$classe)
+
+# Now create some prediction models on the training data
+# Here, we'll use cross validation with trainControl to help optimize
+# the model parameters
+# Here, we'll do 5-fold cross validation
+
+crosCtrl <- trainControl(method = "cv", number = 5, allowParallel = TRUE, verboseIter = TRUE)
+
+
+# model 
+model1 <- train(classe ~ ., data = clean.TrData, method = "rf", trControl = crosCtrl)
+
+```
+
+##Accuracy on training set and cross validation set##
+
+Following the computation on the accuracy of trainig and cross validation set for model 1.
+
+Training set:
+```{r, echo=TRUE, cache=TRUE}
+
+trainingPred <- predict(model1, training)
+confusionMatrix(trainingPred, training$classe)
+```
+Cross validation set
+```{r, echo=TRUE, cache=TRUE}
+cvPred <- predict(model1, crossValidation)
+confusionMatrix(cvPred, crossValidation$classe)
+```
+#Result#
+Predicting on real data set
+```{r, echo=TRUE, cache=TRUE}
+testingPred <- predict(model1, clean.TsData)
+testingPred
+```
+
+The last step of the assignment is to write out the results to test results files to be uploaded for automated grading. The code below was reused from the course website as suggested for use during the prediction answer submission process.
+
+```{r, echo=TRUE, cache=TRUE}
+# Looks like they all do; let's write out the prediction files to submit
+# This uses the code supplied by the class instructions
+answers <- testingPred
+
+  pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+      filename = paste0("problem_id_",i,".txt")
+      write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+  }
+  
+pml_write_files(answers)
+```
+# References#
+The data for this project come from source: <http://groupware.les.inf.puc-rio.br/har>.
